@@ -1,7 +1,7 @@
 import * as rc from "./rive_advanced.mjs";
-import * as packageData from "package.json";
 import { Animation } from './animation';
 import { Layout } from "./layout";
+import { RuntimeLoader } from "./runtime-loader";
 import { registerTouchInteractions, sanitizeUrl, BLANK_URL } from "./utils";
 
 export * from './layout';
@@ -33,93 +33,6 @@ interface SetupRiveListenersOptions {
  * Type for artboard bounds
  */
 export type Bounds = rc.AABB;
-
-// #region runtime
-
-// Callback type when looking for a runtime instance
-export type RuntimeCallback = (rive: rc.RiveCanvas) => void;
-
-// Runtime singleton; use getInstance to provide a callback that returns the
-// Rive runtime
-export class RuntimeLoader {
-  // Singleton helpers
-  private static runtime: rc.RiveCanvas;
-  // Flag to indicate that loading has started/completed
-  private static isLoading = false;
-  // List of callbacks for the runtime that come in while loading
-  private static callBackQueue: RuntimeCallback[] = [];
-  // Instance of the Rive runtime
-  private static rive: rc.RiveCanvas;
-  // Path to the Wasm file; default path works for testing only;
-  // if embedded wasm is used then this is never used.
-  private static wasmURL = `https://unpkg.com/${packageData.name}@${packageData.version}/rive.wasm`;
-
-  // Class is never instantiated
-  private constructor() {}
-
-  // Loads the runtime
-  private static loadRuntime(): void {
-    rc.default({
-      // Loads Wasm bundle
-      locateFile: () => RuntimeLoader.wasmURL,
-    })
-      .then((rive: rc.RiveCanvas) => {
-        RuntimeLoader.runtime = rive;
-        // Fire all the callbacks
-        while (RuntimeLoader.callBackQueue.length > 0) {
-          RuntimeLoader.callBackQueue.shift()?.(RuntimeLoader.runtime);
-        }
-      })
-      .catch(() => {
-        // In case unpkg fails, or the wasm was not supported, we try to load the fallback module from jsdelivr.
-        // This `rive_fallback.wasm` is compiled to support older architecture.
-        // TODO: (Gordon): preemptively test browser support and load the correct wasm file. Then use jsdelvr only if unpkg fails.
-        const backupJsdelivrUrl = `https://cdn.jsdelivr.net/npm/${packageData.name}@${packageData.version}/rive_fallback.wasm`;
-        if (RuntimeLoader.wasmURL.toLowerCase() !== backupJsdelivrUrl) {
-          console.warn(
-            `Failed to load WASM from ${RuntimeLoader.wasmURL}, trying jsdelivr as a backup`,
-          );
-          RuntimeLoader.setWasmUrl(backupJsdelivrUrl);
-          RuntimeLoader.loadRuntime();
-        } else {
-          console.error(
-            "Could not load Rive WASM file from unpkg or jsdelivr, network connection may be down, or \
-        you may need to call set a new WASM source via RuntimeLoader.setWasmUrl() and call \
-        RuntimeLoader.loadRuntime() again",
-          );
-        }
-      });
-  }
-
-  // Provides a runtime instance via a callback
-  public static getInstance(callback: RuntimeCallback): void {
-    // If it's not loading, start loading runtime
-    if (!RuntimeLoader.isLoading) {
-      RuntimeLoader.isLoading = true;
-      RuntimeLoader.loadRuntime();
-    }
-    if (!RuntimeLoader.runtime) {
-      RuntimeLoader.callBackQueue.push(callback);
-    } else {
-      callback(RuntimeLoader.runtime);
-    }
-  }
-
-  // Provides a runtime instance via a promise
-  public static awaitInstance(): Promise<rc.RiveCanvas> {
-    return new Promise<rc.RiveCanvas>((resolve) =>
-      RuntimeLoader.getInstance((rive: rc.RiveCanvas): void => resolve(rive)),
-    );
-  }
-
-  // Manually sets the wasm url
-  public static setWasmUrl(url: string): void {
-    RuntimeLoader.wasmURL = url;
-  }
-}
-
-// #endregion
-
 
 // #region state machines
 
